@@ -107,15 +107,15 @@ class LegacyQueryAnalyzer(AbstractQueryAnalyzer):
         for row in await self.lookup_in_db(lookup_words):
             for trange in words[row.word_token.strip()]:
                 token, ttype = self.make_token(row)
-                if ttype == qmod.TokenType.CATEGORY:
+                if ttype == qmod.TokenType.NEAR_ITEM:
                     if trange.start == 0:
-                        query.add_token(trange, qmod.TokenType.CATEGORY, token)
+                        query.add_token(trange, qmod.TokenType.NEAR_ITEM, token)
                 elif ttype == qmod.TokenType.QUALIFIER:
                     query.add_token(trange, qmod.TokenType.QUALIFIER, token)
                     if trange.start == 0 or trange.end == query.num_token_slots():
                         token = copy(token)
                         token.penalty += 0.1 * (query.num_token_slots())
-                        query.add_token(trange, qmod.TokenType.CATEGORY, token)
+                        query.add_token(trange, qmod.TokenType.NEAR_ITEM, token)
                 elif ttype != qmod.TokenType.PARTIAL or trange.start + 1 == trange.end:
                     query.add_token(trange, ttype, token)
 
@@ -125,6 +125,15 @@ class LegacyQueryAnalyzer(AbstractQueryAnalyzer):
         log().table_dump('Word tokens', _dump_word_tokens(query))
 
         return query
+
+
+    def normalize_text(self, text: str) -> str:
+        """ Bring the given text into a normalized form.
+
+            This only removes case, so some difference with the normalization
+            in the phrase remains.
+        """
+        return text.lower()
 
 
     def split_query(self, query: qmod.QueryStruct) -> Tuple[List[str],
@@ -186,7 +195,7 @@ class LegacyQueryAnalyzer(AbstractQueryAnalyzer):
                 ttype = qmod.TokenType.POSTCODE
                 lookup_word = row.word_token[1:]
             else:
-                ttype = qmod.TokenType.CATEGORY if row.operator in ('in', 'near')\
+                ttype = qmod.TokenType.NEAR_ITEM if row.operator in ('in', 'near')\
                         else qmod.TokenType.QUALIFIER
                 lookup_word = row.word
         elif row.word_token.startswith(' '):

@@ -22,6 +22,7 @@ from nominatim.api.connection import SearchConnection
 from nominatim.api.logging import log
 from nominatim.api.search import query as qmod
 from nominatim.api.search.query_analyzer_factory import AbstractQueryAnalyzer
+from nominatim.db.sqlalchemy_types import Json
 
 
 DB_TO_TOKEN_TYPE = {
@@ -101,10 +102,16 @@ class ICUToken(qmod.Token):
         penalty = 0.0
         if row.type == 'w':
             penalty = 0.3
+        elif row.type == 'W':
+            if len(row.word_token) == 1 and row.word_token == row.word:
+                penalty = 0.2 if row.word.isdigit() else 0.3
         elif row.type == 'H':
             penalty = sum(0.1 for c in row.word_token if c != ' ' and not c.isdigit())
             if all(not c.isdigit() for c in row.word_token):
                 penalty += 0.2 * (len(row.word_token) - 1)
+        elif row.type == 'C':
+            if len(row.word_token) == 1:
+                penalty = 0.3
 
         if row.info is None:
             lookup_word = row.word
@@ -153,7 +160,7 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
                      sa.Column('word_token', sa.Text, nullable=False),
                      sa.Column('type', sa.Text, nullable=False),
                      sa.Column('word', sa.Text),
-                     sa.Column('info', self.conn.t.types.Json))
+                     sa.Column('info', Json))
 
 
     async def analyze_query(self, phrases: List[qmod.Phrase]) -> qmod.QueryStruct:
@@ -178,13 +185,13 @@ class ICUQueryAnalyzer(AbstractQueryAnalyzer):
                 if row.type == 'S':
                     if row.info['op'] in ('in', 'near'):
                         if trange.start == 0:
-                            query.add_token(trange, qmod.TokenType.CATEGORY, token)
+                            query.add_token(trange, qmod.TokenType.NEAR_ITEM, token)
                     else:
                         query.add_token(trange, qmod.TokenType.QUALIFIER, token)
                         if trange.start == 0 or trange.end == query.num_token_slots():
                             token = copy(token)
                             token.penalty += 0.1 * (query.num_token_slots())
-                            query.add_token(trange, qmod.TokenType.CATEGORY, token)
+                            query.add_token(trange, qmod.TokenType.NEAR_ITEM, token)
                 else:
                     query.add_token(trange, DB_TO_TOKEN_TYPE[row.type], token)
 

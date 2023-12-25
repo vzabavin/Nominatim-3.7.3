@@ -1,3 +1,4 @@
+@SQLITE
 @APIDB
 Feature: Structured search queries
     Testing correctness of results with
@@ -56,7 +57,7 @@ Feature: Structured search queries
           | Liechtenstein |
         And  results contain
           | class   | type |
-          | amenity | ^(pub)\|(bar) |
+          | amenity | ^(pub)\|(bar)\|(restaurant) |
 
     #176
     Scenario: Structured search restricts rank

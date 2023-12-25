@@ -16,6 +16,8 @@ import sqlalchemy as sa
 
 import nominatim.api as napi
 from nominatim.db.sql_preprocessor import SQLPreprocessor
+from nominatim.api.search.query_analyzer_factory import make_query_analyzer
+from nominatim.tools import convert_sqlite
 import nominatim.api.logging as loglib
 
 class APITester:
@@ -159,6 +161,22 @@ class APITester:
                                      """)))
 
 
+    def add_word_table(self, content):
+        data = [dict(zip(['word_id', 'word_token', 'type', 'word', 'info'], c))
+                for c in content]
+
+        async def _do_sql():
+            async with self.api._async_api.begin() as conn:
+                if 'word' not in conn.t.meta.tables:
+                    await make_query_analyzer(conn)
+                    word_table = conn.t.meta.tables['word']
+                    await conn.connection.run_sync(word_table.create)
+                if data:
+                    await conn.execute(conn.t.meta.tables['word'].insert(), data)
+
+        self.async_to_sync(_do_sql())
+
+
     async def exec_async(self, sql, *args, **kwargs):
         async with self.api._async_api.begin() as conn:
             return await conn.execute(sql, *args, **kwargs)
@@ -178,7 +196,6 @@ def apiobj(temp_db_with_extensions, temp_db_conn, monkeypatch):
     testapi.async_to_sync(testapi.create_tables())
 
     proc = SQLPreprocessor(temp_db_conn, testapi.api.config)
-    proc.run_sql_file(temp_db_conn, 'functions/address_lookup.sql')
     proc.run_sql_file(temp_db_conn, 'functions/ranking.sql')
 
     loglib.set_log_output('text')
@@ -186,3 +203,44 @@ def apiobj(temp_db_with_extensions, temp_db_conn, monkeypatch):
     print(loglib.get_and_disable())
 
     testapi.api.close()
+
+
+@pytest.fixture(params=['postgres_db', 'sqlite_db'])
+def frontend(request, event_loop, tmp_path):
+    testapis = []
+    if request.param == 'sqlite_db':
+        db = str(tmp_path / 'test_nominatim_python_unittest.sqlite')
+
+        def mkapi(apiobj, options={'reverse'}):
+            apiobj.add_data('properties',
+                        [{'property': 'tokenizer', 'value': 'icu'},
+                         {'property': 'tokenizer_import_normalisation', 'value': ':: lower();'},
+                         {'property': 'tokenizer_import_transliteration', 'value': "'1' > '/1/'; 'ä' > 'ä '"},
+                        ])
+
+            async def _do_sql():
+                async with apiobj.api._async_api.begin() as conn:
+                    if 'word' in conn.t.meta.tables:
+                        return
+                    await make_query_analyzer(conn)
+                    word_table = conn.t.meta.tables['word']
+                    await conn.connection.run_sync(word_table.create)
+
+            apiobj.async_to_sync(_do_sql())
+
+            event_loop.run_until_complete(convert_sqlite.convert(Path('/invalid'),
+                                                                 db, options))
+            outapi = napi.NominatimAPI(Path('/invalid'),
+                                       {'NOMINATIM_DATABASE_DSN': f"sqlite:dbname={db}",
+                                        'NOMINATIM_USE_US_TIGER_DATA': 'yes'})
+            testapis.append(outapi)
+
+            return outapi
+    elif request.param == 'postgres_db':
+        def mkapi(apiobj, options=None):
+            return apiobj.api
+
+    yield mkapi
+
+    for api in testapis:
+        api.close()

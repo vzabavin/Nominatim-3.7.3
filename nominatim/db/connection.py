@@ -31,7 +31,7 @@ class Cursor(psycopg2.extras.DictCursor):
         """ Query execution that logs the SQL query when debugging is enabled.
         """
         if LOG.isEnabledFor(logging.DEBUG):
-            LOG.debug(self.mogrify(query, args).decode('utf-8')) # type: ignore[no-untyped-call]
+            LOG.debug(self.mogrify(query, args).decode('utf-8'))
 
         super().execute(query, args)
 
@@ -173,6 +173,15 @@ class Connection(psycopg2.extensions.connection):
             raise UsageError(f"Error fetching Postgis version. Bad format: {version}")
 
         return (int(version_parts[0]), int(version_parts[1]))
+
+
+    def extension_loaded(self, extension_name: str) -> bool:
+        """ Return True if the hstore extension is loaded in the database.
+        """
+        with self.cursor() as cur:
+            cur.execute('SELECT extname FROM pg_extension WHERE extname = %s', (extension_name, ))
+            return cur.rowcount > 0
+
 
 class ConnectionContext(ContextManager[Connection]):
     """ Context manager of the connection that also provides direct access

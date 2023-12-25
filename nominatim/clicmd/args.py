@@ -72,6 +72,7 @@ class NominatimArgs:
     check_database: bool
     migrate: bool
     collect_os_info: bool
+    clean_deleted: str
     analyse_indexing: bool
     target: Optional[str]
     osm_id: Optional[str]
@@ -86,6 +87,7 @@ class NominatimArgs:
     offline: bool
     ignore_errors: bool
     index_noanalyse: bool
+    prepare_database: bool
 
     # Arguments to 'index'
     boundaries_only: bool
@@ -99,6 +101,9 @@ class NominatimArgs:
     output_all_postcodes: bool
     language: Optional[str]
     restrict_to_country: Optional[str]
+
+    # Arguments to 'convert'
+    output: Path
 
     # Arguments to 'refresh'
     postcodes: bool
